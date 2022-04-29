@@ -16,67 +16,127 @@ else maindir = "E:/DONNEES/Matthieu/Projet_PHIV-RootCell/Test/";
 dir1=maindir+"Source";
 list = getFileList(dir1);
 N=list.length;
-N=10;
+radiusStele=100;//Measured on a bunch of images
 
-for (i=5; i<N; i++) {
+
+compute=false;
+verif=true;
+
+function excludeThisOne(imgName){
+	if(imgName=="NOTHING HERE1f (2).tif")return true;
+	return false;
+}
+
+if(compute){
+	for (i=0; i<N; i++) {
+		if(excludeThisOne(list[i]))continue;
+		//Open and prepare image
+		cleanRois();
+		prepareImage(dir1+"/"+list[i]);
+	
+		//Get stele center coordinates
+		coords=getCoordsOfPointInRoi(maindir+"SteleCenter/SteleCenter_highres_slice"+i+".zip");
+		x=coords[0];
+		y=coords[1];
+	
+		//////COMPUTE STELE CONTOUR
+		// Remove stele center
+		ray1=radiusStele*0.85;
+		makeOval(x-ray1, y-ray1, ray1*2, ray1*2);
+		run("Clear", "slice");
+		run("Select None");
+	
+		 // Remove all the tissue outside the stele
+		ray2=radiusStele*2; 
+		makeOval(x-ray2, y-ray2, ray2*2, ray2*2);
+		run("Clear Outside");
+		run("Select None");
+	
+		 // Get contour
+		run("Gaussian Blur...", "sigma=10");
+		rename("gauss");
+		run("Find Maxima...", "prominence=30 light output=[Single Points]");
+		rename("marks");
+		run("Marker-controlled Watershed", "input=gauss marker=marks mask=None compactness=0 binary calculate use");
+		doWand(x,y);
+		run("Enlarge...", "enlarge=-25");
+		roiManager("Add");
+		roiManager("Save", maindir+"CortexRoi/cortexInsideBoundary_slice"+i+".zip");
+		cleanRois();
+		run("Close All");
+		
+	
+	
+		//////COMPUTE SCLERENCHYME CONTOUR
+		//Open and prepare image
+		prepareImage(dir1+"/"+list[i]);
+	
+		// Remove all the stele
+		ray1=radiusStele*2.7;
+		makeOval(x-ray1, y-ray1, ray1*2, ray1*2);
+		run("Clear", "slice");
+		run("Select None");
+	
+		 // Get contour
+		run("Median...", "sigma=20");
+		run("Gaussian Blur...", "sigma=20");
+		rename("gauss");
+		run("Find Maxima...", "prominence=30 light output=[Single Points]");
+		rename("marks");
+		run("Marker-controlled Watershed", "input=gauss marker=marks mask=None compactness=0 binary calculate use");
+		doWand(x,y);
+		run("Enlarge...", "enlarge=3");
+		roiManager("Add");
+		roiManager("Save", maindir+"CortexRoi/cortexOutsideBoundary_slice"+i+".zip");
+		cleanRois();
+		run("Close All");
+	}
+}
+
+if(verif){
+	for (i=0; i<N; i++) {
+		if(excludeThisOne(list[i]))continue;
+		run("Close All");
+		cleanRois();
+		//////ADAPT THE CONTOURS A BIT INCLUDING A SAFETY ZONE
+		prepareImage(dir1+"/"+list[i]);
+		roiManager("open", maindir+"CortexRoi/cortexInsideBoundary_slice"+i+".zip");
+		roiManager("open", maindir+"CortexRoi/cortexOutsideBoundary_slice"+i+".zip");
+		//	run("Clear", "slice");
+		//	run("Clear Outside");
+		run("Select All");
+		roiManager("Show All");
+		waitForUser;
+	}
+}
+
+
+run("Close All");
+cleanRois();
+
+
+function cleanRois(){
 	if (roiManager("count")>0){
 		roiManager("Deselect");
 		roiManager("Delete");
 	}
-	//Open and prepare image
-	open(dir1+"/"+list[i]);
-	run("8-bit");
-	run("Enhance Contrast", "saturated=0.35");
-	run("Apply LUT");
+}
 
-	//Open roi with stele center coordinates
-	roiManager("open", maindir+"SteleCenter/SteleCenter_highres_slice"+i+".zip");
+function getCoordsOfPointInRoi(path){
+	tab=newArray(2);
+	roiManager("open", path);
 	roiManager("Select", 0);
 	Roi.getCoordinates(xpoints, ypoints);
 	roiManager("Delete");
-	x=xpoints[0];
-	y=ypoints[0];
+	tab[0]=xpoints[0];
+	tab[1]=ypoints[0];
+	return tab;
+}
 
-	radius=100;
-	ray1=radius*0.92; // inclut forcément dans la stele
-	makeOval(x-ray1, y-ray1, ray1*2, ray1*2);
-	run("Clear", "slice");
-	run("Select None");
-
-	ray2=radius*2; // inclut forcément toute la stele
-	makeOval(x-ray2, y-ray2, ray2*2, ray2*2);
-	run("Clear Outside");
-	run("Select None");
-
-	run("Gaussian Blur...", "sigma=10");
-	run("Find Maxima...", "prominence=30 light output=[Segmented Particles]");
-	run("Invert");
-	run("Analyze Particles...", "clear add");
-	run("Close All");
-
-	open(dir1+"/"+list[i]);
+function prepareImage(path){
+	open(path);
 	run("8-bit");
 	run("Enhance Contrast", "saturated=0.35");
 	run("Apply LUT");
-	ray3=radius*2; // inclut forcément toute la stele
-	makeOval(x-ray3, y-ray3, ray3*2, ray3*2);
-	run("Clear", "slice");
-	run("Select None");
-	run("Gaussian Blur...", "sigma=15");
-	run("Find Maxima...", "prominence=30 light output=[Segmented Particles]");
-	run("Invert");
-	run("Analyze Particles...", "exclude include add");
-	run("Close All");
-	
-	open(dir1+"/"+list[i]);
-	roiManager("Select", 0);
-	run("Enlarge...", "enlarge=-20");
-	run("Clear", "slice");
-	roiManager("Select", 1);
-	run("Enlarge...", "enlarge=2");
-	run("Clear Outside");
-	run("Select None");
-	waitForUser;
-
 }
 
